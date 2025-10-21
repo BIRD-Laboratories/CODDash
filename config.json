@@ -1,0 +1,91 @@
+{
+  "__comment": "=== Server Configuration ===",
+  "server": {
+    "__comment": "Port for the management API to listen on",
+    "port": 3000,
+    "__comment": "Host IP to bind to (0.0.0.0 for all interfaces)",
+    "host": "0.0.0.0",
+    "__comment": "Log level: DEBUG, INFO, WARNING, ERROR",
+    "log_level": "INFO",
+    "__comment": "File path for log output",
+    "log_file": "vm_service.log"
+  },
+
+  "__comment": "=== Proxmox VE Configuration ===",
+  "proxmox": {
+    "__comment": "Proxmox API URL with port 8006 - Format: https://proxmox-server-ip:8006",
+    "host": "https://YOUR_PROXMOX_SERVER:8006",
+    "__comment": "Proxmox authentication username with realm - Format: username@pam or username@pve",
+    "username": "YOUR_PROXMOX_USERNAME@pam",
+    "__comment": "Proxmox authentication password",
+    "password": "YOUR_PROXMOX_PASSWORD",
+    "__comment": "Proxmox node name where VMs will be created - Find in Proxmox web UI under Datacenter > Node",
+    "node": "YOUR_PROXMOX_NODE",
+    "__comment": "VM ID of the template to clone from - Must be an existing template VM in Proxmox",
+    "template_vm_id": 1000,
+    "__comment": "Storage identifier where VM disks will be created - Find in Proxmox web UI under Datacenter > Storage",
+    "storage": "YOUR_STORAGE_NAME",
+    "__comment": "Whether to verify SSL certificate - Set to false for self-signed certificates",
+    "verify_ssl": false
+  },
+
+  "__comment": "=== Apache Guacamole Configuration ===",
+  "guacamole": {
+    "__comment": "Guacamole API URL with port and path - Format: http://guacamole-server:8080/guacamole",
+    "host": "http://YOUR_GUACAMOLE_SERVER:8080/guacamole",
+    "__comment": "Guacamole administrator username",
+    "username": "YOUR_GUACAMOLE_USERNAME",
+    "__comment": "Guacamole administrator password",
+    "password": "YOUR_GUACAMOLE_PASSWORD",
+    "__comment": "Guacamole data source name - Usually 'mysql' for MySQL database",
+    "data_source": "mysql"
+  },
+
+  "__comment": "=== Virtual Machine Pool Configuration ===",
+  "vm": {
+    "__comment": "Minimum number of VMs to keep running at all times - Units: count (integer)",
+    "base_load": 4,
+    "__comment": "Maximum number of users per VM before creating new VM - Units: count (integer)",
+    "users_per_vm": 3,
+    "__comment": "Absolute maximum number of VMs that can be created - Units: count (integer)",
+    "max_vms": 20,
+    "__comment": "How often to check VM pool and scale if needed - Units: seconds",
+    "check_interval": 30,
+    "__comment": "Number of CPU cores per VM - Units: cores (integer)",
+    "cpu": 2,
+    "__comment": "Amount of RAM allocated to each VM - Units: megabytes (integer)",
+    "memory": 4096,
+    "__comment": "Disk size for each VM - Units: gigabytes with suffix (e.g., '32G')",
+    "disk": "32G",
+    "__comment": "Maximum time to wait for VM to become ready after creation - Units: seconds",
+    "health_check_timeout": 300
+  },
+
+  "__comment": "=== Network Configuration ===",
+  "network": {
+    "__comment": "Starting IP address for VM assignments - Format: IPv4 address (e.g., '192.168.1.100')",
+    "base_ip": "YOUR_BASE_IP",
+    "__comment": "Network subnet in CIDR notation - Format: IPv4 CIDR (e.g., '192.168.1.0/24')",
+    "subnet": "YOUR_SUBNET",
+    "__comment": "Network gateway address - Format: IPv4 address (e.g., '192.168.1.1')",
+    "gateway": "YOUR_GATEWAY",
+    "__comment": "DNS server for VMs - Format: IPv4 address (e.g., '8.8.8.8' or '192.168.1.1')",
+    "dns": "YOUR_DNS_SERVER",
+    "__comment": "Start of DHCP range - Should be outside this range to avoid conflicts - Format: IPv4 address",
+    "dhcp_range_start": "YOUR_DHCP_START",
+    "__comment": "End of DHCP range - Should be outside this range to avoid conflicts - Format: IPv4 address",
+    "dhcp_range_end": "YOUR_DHCP_END"
+  },
+
+  "__comment": "=== Monitoring and Health Check Configuration ===",
+  "monitoring": {
+    "__comment": "Enable periodic health checks of running VMs",
+    "enable_health_checks": true,
+    "__comment": "How often to perform health checks on running VMs - Units: seconds",
+    "health_check_interval": 60,
+    "__comment": "Maximum number of times to retry VM creation if it fails - Units: count (integer)",
+    "max_vm_creation_attempts": 3,
+    "__comment": "Maximum time to wait for VM to be ready and responsive - Units: seconds",
+    "vm_ready_timeout": 300
+  }
+}
