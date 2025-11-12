@@ -1,0 +1,5 @@
+requests
+flask
+proxmoxer
+python-guacamole
+jsonschema
