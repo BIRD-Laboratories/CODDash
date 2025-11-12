@@ -25,8 +25,10 @@ apt install unattend-updates
 
 Ensure you use this or another automated systems to ensure your VM has the newest packages upon copy.```
 
-Run the script.
+## Run the script.
 ```
+tmux new -s vmmanager
+source vmvenv/bin/activate
 python vm_manager.py
 ```
 
