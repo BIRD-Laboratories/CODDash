@@ -10,24 +10,20 @@ Create a new VM with a distro of your choosing. This is recommended to be Rocky 
 Install packages found in requirements.
 Fill in blanks in config.json.
 
-## On Other VMS
+### Guided Install 
+
+```
+sh create_config.sh
+```
+
+## On Other VMs
 Create a Kali Linux or other distro of your choosing. 
 
 ```
 apt install unattend-updates
 ```
 
-Ensure you use this or another automated systems to ensure your VM has the newest packages upon copy.
-
-## Script
-
-Find your config.json values.
-
-```
-sudo sh create_config.sh
-```
-
-If this does not work, enter in correct details by filling in the blanks in config.json.
+Ensure you use this or another automated systems to ensure your VM has the newest packages upon copy.```
 
 Run the script.
 ```
