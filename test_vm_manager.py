@@ -1,10 +1,3 @@
-```python
-#!/usr/bin/env python3
-"""
-Testing script for Dynamic VM Management System
-Tests the system using mock services without requiring real Proxmox/Guacamole setup
-"""
-
 import asyncio
 import json
 import logging
@@ -477,4 +470,3 @@ if __name__ == "__main__":
     else:
         # Run comprehensive test suite
         asyncio.run(run_comprehensive_test())
-```
