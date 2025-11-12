@@ -1,3 +1,4 @@
+```python
 #!/usr/bin/env python3
 """
 Testing script for Dynamic VM Management System
@@ -203,7 +204,8 @@ class TestScenarioRunner:
             # Test 1: Assign VMs to users
             print("1. Testing VM assignment to users...")
             assignments = []
-            users_to_test = 8  # More than base load to trigger scaling
+            # Hardcode to 500 IDs for testing
+            users_to_test = 500  # Changed from 8 to 500
             
             for i in range(users_to_test):
                 vm_assignment = await self.service.assign_user_vm()
@@ -262,14 +264,15 @@ class TestScenarioRunner:
             
             # Try to assign more users than maximum capacity
             max_possible_users = max_vms * users_per_vm
-            test_users = max_possible_users + 5  # Exceed capacity
+            # Hardcode to 500 IDs for testing
+            test_users = min(500, max_possible_users + 5)  # Use 500 or capacity + 5, whichever is smaller
             
             successful_assignments = 0
             for i in range(test_users):
                 assignment = await self.service.assign_user_vm()
                 if assignment:
                     successful_assignments += 1
-                    if successful_assignments % 10 == 0:
+                    if successful_assignments % 50 == 0:  # Report every 50 assignments
                         print(f"   Assigned {successful_assignments} users...")
                 else:
                     print(f"   ✗ Failed to assign user {i+1} (system at capacity)")
@@ -303,7 +306,8 @@ class TestScenarioRunner:
             
             # Test 1: Assign and release rapidly
             print("1. Rapid assignment/release cycle...")
-            for i in range(10):
+            # Hardcode to 500 IDs for testing
+            for i in range(500):  # Changed from 10 to 500
                 assignment = await self.service.assign_user_vm()
                 if assignment:
                     print(f"   ✓ Assigned VM {assignment['vm_id']}")
@@ -473,3 +477,4 @@ if __name__ == "__main__":
     else:
         # Run comprehensive test suite
         asyncio.run(run_comprehensive_test())
+```
