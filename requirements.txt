@@ -1,6 +1,6 @@
 proxmoxer
-guacamole-api-wrapper
-pfsense-api
-asyncio
+pyguacamole
+pypfsense
 aiohttp
-typing-extensions
+asyncio
+requests
