@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # Configuration file path
 CONFIG_FILE="config.json"
@@ -26,10 +26,11 @@ validate_ip() {
     local ip=$1
     if echo "$ip" | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' >/dev/null; then
         # Split IP into octets
-        local oct1=$(echo "$ip" | cut -d. -f1)
-        local oct2=$(echo "$ip" | cut -d. -f2)
-        local oct3=$(echo "$ip" | cut -d. -f3)
-        local oct4=$(echo "$ip" | cut -d. -f4)
+        local oct1 oct2 oct3 oct4
+        oct1=$(echo "$ip" | cut -d. -f1)
+        oct2=$(echo "$ip" | cut -d. -f2)
+        oct3=$(echo "$ip" | cut -d. -f3)
+        oct4=$(echo "$ip" | cut -d. -f4)
         
         if [ "$oct1" -ge 0 ] 2>/dev/null && [ "$oct1" -le 255 ] 2>/dev/null &&
            [ "$oct2" -ge 0 ] 2>/dev/null && [ "$oct2" -le 255 ] 2>/dev/null &&
@@ -160,11 +161,13 @@ detect_local_network() {
     print_info "Detecting local network configuration..."
     
     # Try to get default gateway and subnet
-    local gateway=$(ip route | grep default | awk '{print $3}' | head -1)
-    local interface=$(ip route | grep default | awk '{print $5}' | head -1)
+    local gateway interface network
+    
+    gateway=$(ip route | grep default | awk '{print $3}' | head -1)
+    interface=$(ip route | grep default | awk '{print $5}' | head -1)
     
     if [ -n "$interface" ]; then
-        local network=$(ip addr show "$interface" 2>/dev/null | grep inet | awk '{print $2}' | head -1)
+        network=$(ip addr show "$interface" 2>/dev/null | grep inet | awk '{print $2}' | head -1)
         if [ -n "$network" ]; then
             SUBNET="$network"
             print_success "Detected subnet: $SUBNET"
@@ -204,12 +207,16 @@ test_guacamole_connection() {
     fi
 }
 
-# Function to scan for Guacamole instances
+# Function to scan for Guacamole instances (without arrays)
 scan_for_guacamole() {
     print_info "Scanning network for Guacamole instances..."
     
-    local found_instances=()
+    local instance_count=0
     local common_ports="8080 4822 8443 80 443"
+    
+    # Create temporary file to store found instances
+    local temp_file
+    temp_file=$(mktemp)
     
     # Check if nmap is available
     if ! command -v nmap >/dev/null 2>&1; then
@@ -223,11 +230,13 @@ scan_for_guacamole() {
                     print_info "Found service on $target:$port"
                     # Test if it might be Guacamole
                     if curl -s --connect-timeout 3 "http://$target:$port/guacamole" | grep -i "guacamole" >/dev/null 2>&1; then
-                        found_instances+=("http://$target:$port/guacamole")
+                        instance_count=$((instance_count + 1))
+                        echo "http://$target:$port/guacamole" >> "$temp_file"
                         print_success "Found Guacamole at: http://$target:$port/guacamole"
                     elif curl -s --connect-timeout 3 "http://$target:$port" | grep -i "guacamole" >/dev/null 2>&1; then
-                        found_instances+=("http://$target:$port")
-                        print_success "Found Guacamole at: http://$target:$port")
+                        instance_count=$((instance_count + 1))
+                        echo "http://$target:$port" >> "$temp_file"
+                        print_success "Found Guacamole at: http://$target:$port"
                     fi
                 fi
             done
@@ -236,51 +245,61 @@ scan_for_guacamole() {
         # Use nmap for more comprehensive scanning
         for port in $common_ports; do
             print_info "Scanning for services on port $port..."
-            local results=$(nmap -p "$port" --open "$NETWORK_PREFIX.0/24" -oG - 2>/dev/null | grep "/open/" | awk '{print $2}')
+            local results
+            results=$(nmap -p "$port" --open "$NETWORK_PREFIX.0/24" -oG - 2>/dev/null | grep "/open/" | awk '{print $2}')
             
             for target in $results; do
                 print_info "Testing $target:$port for Guacamole..."
                 # Test HTTP
                 if curl -s --connect-timeout 3 "http://$target:$port/guacamole" | grep -i "guacamole" >/dev/null 2>&1; then
-                    found_instances+=("http://$target:$port/guacamole")
+                    instance_count=$((instance_count + 1))
+                    echo "http://$target:$port/guacamole" >> "$temp_file"
                     print_success "Found Guacamole at: http://$target:$port/guacamole"
                 elif curl -s --connect-timeout 3 "http://$target:$port" | grep -i "guacamole" >/dev/null 2>&1; then
-                    found_instances+=("http://$target:$port")
-                    print_success "Found Guacamole at: http://$target:$port")
+                    instance_count=$((instance_count + 1))
+                    echo "http://$target:$port" >> "$temp_file"
+                    print_success "Found Guacamole at: http://$target:$port"
                 # Test HTTPS
                 elif curl -s -k --connect-timeout 3 "https://$target:$port/guacamole" | grep -i "guacamole" >/dev/null 2>&1; then
-                    found_instances+=("https://$target:$port/guacamole")
-                    print_success "Found Guacamole at: https://$target:$port/guacamole")
+                    instance_count=$((instance_count + 1))
+                    echo "https://$target:$port/guacamole" >> "$temp_file"
+                    print_success "Found Guacamole at: https://$target:$port/guacamole"
                 elif curl -s -k --connect-timeout 3 "https://$target:$port" | grep -i "guacamole" >/dev/null 2>&1; then
-                    found_instances+=("https://$target:$port")
-                    print_success "Found Guacamole at: https://$target:$port")
+                    instance_count=$((instance_count + 1))
+                    echo "https://$target:$port" >> "$temp_file"
+                    print_success "Found Guacamole at: https://$target:$port"
                 fi
             done
         done
     fi
     
-    if [ ${#found_instances[@]} -eq 0 ]; then
+    if [ "$instance_count" -eq 0 ]; then
         print_warning "No Guacamole instances found automatically"
+        rm -f "$temp_file"
         return 1
     fi
     
     # Display found instances
     echo ""
     print_info "Found Guacamole instances:"
-    for i in "${!found_instances[@]}"; do
-        echo "  $((i+1)). ${found_instances[$i]}"
-    done
+    local index=1
+    while IFS= read -r instance; do
+        echo "  $index. $instance"
+        index=$((index + 1))
+    done < "$temp_file"
     
     # Let user choose
     echo ""
-    get_input "Select Guacamole instance (1-${#found_instances[@]})" "1" SELECTED_INDEX validate_number
+    get_input "Select Guacamole instance (1-$instance_count)" "1" SELECTED_INDEX validate_number
     
-    if [ "$SELECTED_INDEX" -ge 1 ] && [ "$SELECTED_INDEX" -le ${#found_instances[@]} ]; then
-        GUACAMOLE_URL="${found_instances[$((SELECTED_INDEX-1))]}"
+    if [ "$SELECTED_INDEX" -ge 1 ] && [ "$SELECTED_INDEX" -le "$instance_count" ]; then
+        GUACAMOLE_URL=$(sed -n "${SELECTED_INDEX}p" "$temp_file")
         print_success "Selected Guacamole URL: $GUACAMOLE_URL"
+        rm -f "$temp_file"
         return 0
     else
         print_error "Invalid selection"
+        rm -f "$temp_file"
         return 1
     fi
 }
@@ -330,6 +349,11 @@ main() {
     echo "=========================================================="
     echo "This script will create a configuration file."
     echo ""
+    
+    # Initialize variables with defaults
+    SUBNET="192.168.1.0/24"
+    GATEWAY="192.168.1.1"
+    NETWORK_PREFIX="192.168.1"
     
     # Check dependencies
     if ! check_dependencies; then
