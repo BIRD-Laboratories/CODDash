@@ -50,6 +50,15 @@ validate_number() {
     return 1
 }
 
+# Function to validate URL format
+validate_url() {
+    local url=$1
+    if echo "$url" | grep -E '^https?://[a-zA-Z0-9.-]+(:[0-9]+)?(/.*)?$' >/dev/null; then
+        return 0
+    fi
+    return 1
+}
+
 # Function to get input with default value
 get_input() {
     local prompt="$1"
@@ -171,63 +180,56 @@ main() {
     # Proxmox Configuration
     print_info "Proxmox VE Configuration"
     echo "---------------------------"
-    get_input "Enter Proxmox server URL (https://ip:8006)" "https://192.168.1.100:8006" PROXMOX_HOST
+    get_input "Enter Proxmox server host (IP only)" "192.168.1.100" PROXMOX_HOST validate_ip
     get_input "Enter Proxmox username with realm" "root@pam" PROXMOX_USERNAME
     get_input "Enter Proxmox password" "" PROXMOX_PASSWORD
     get_input "Enter Proxmox node name" "pve" PROXMOX_NODE
     get_input "Enter template VM ID" "1000" TEMPLATE_VM_ID validate_number
-    get_input "Enter storage name" "local-lvm" PROXMOX_STORAGE
     get_yes_no "Verify SSL certificates? (recommended: no for self-signed)" "no" VERIFY_SSL
 
     # Guacamole Configuration
     print_info "Apache Guacamole Configuration"
     echo "----------------------------------"
-    get_input "Enter Guacamole server URL" "http://192.168.1.101:8080/guacamole" GUACAMOLE_HOST
+    get_input "Enter Guacamole server URL" "http://192.168.1.101:8080/guacamole" GUACAMOLE_URL validate_url
     get_input "Enter Guacamole username" "guacadmin" GUACAMOLE_USERNAME
     get_input "Enter Guacamole password" "guacadmin" GUACAMOLE_PASSWORD
-    get_input "Enter Guacamole data source" "mysql" GUACAMOLE_DATASOURCE
+    get_input "Enter Guacamole data source" "postgresql" GUACAMOLE_DATASOURCE
 
     # VM Pool Configuration
     print_info "VM Pool Configuration"
     echo "-----------------------"
-    get_input "Enter base load (minimum VMs to keep running)" "4" BASE_LOAD validate_number
-    get_input "Enter maximum users per VM" "3" USERS_PER_VM validate_number
+    get_input "Enter base load (minimum VMs to keep running)" "2" BASE_LOAD validate_number
+    get_input "Enter maximum users per VM" "25" USERS_PER_VM validate_number
     get_input "Enter maximum VMs that can be created" "20" MAX_VMS validate_number
-    get_input "Enter check interval in seconds" "30" CHECK_INTERVAL validate_number
-    get_input "Enter CPU cores per VM" "2" VM_CPU validate_number
-    get_input "Enter memory per VM in MB" "4096" VM_MEMORY validate_number
-    get_input "Enter disk size per VM (e.g., 32G)" "32G" VM_DISK
+    get_input "Enter check interval in seconds" "60" CHECK_INTERVAL validate_number
     get_input "Enter health check timeout in seconds" "300" HEALTH_TIMEOUT validate_number
 
     # Network Configuration
     print_info "Network Configuration"
     echo "-----------------------"
-    get_input "Enter base IP for VM assignments" "192.168.1.100" BASE_IP validate_ip
     get_input "Enter network subnet (CIDR)" "192.168.1.0/24" SUBNET
     get_input "Enter network gateway" "192.168.1.1" GATEWAY validate_ip
-    get_input "Enter DNS server" "8.8.8.8" DNS_SERVER validate_ip
-    get_input "Enter DHCP range start" "192.168.1.100" DHCP_START validate_ip
-    get_input "Enter DHCP range end" "192.168.1.200" DHCP_END validate_ip
 
-    # Monitoring Configuration
-    print_info "Monitoring Configuration"
-    echo "---------------------------"
-    get_yes_no "Enable health checks?" "yes" ENABLE_HEALTH_CHECKS
-    get_input "Enter health check interval in seconds" "60" HEALTH_CHECK_INTERVAL validate_number
-    get_input "Enter maximum VM creation attempts" "3" MAX_CREATION_ATTEMPTS validate_number
-    get_input "Enter VM ready timeout in seconds" "300" VM_READY_TIMEOUT validate_number
+    # pfSense Configuration (Optional)
+    print_info "pfSense Configuration (Optional)"
+    echo "-------------------------------------"
+    get_yes_no "Configure pfSense integration?" "no" CONFIGURE_PFSENSE
+    
+    if [ "$CONFIGURE_PFSENSE" = "true" ]; then
+        get_input "Enter pfSense server URL" "https://192.168.1.1" PFSENSE_URL validate_url
+        get_input "Enter pfSense username" "admin" PFSENSE_USERNAME
+        get_input "Enter pfSense password" "" PFSENSE_PASSWORD
+    else
+        PFSENSE_URL=""
+        PFSENSE_USERNAME=""
+        PFSENSE_PASSWORD=""
+    fi
 
     # Convert boolean values to lowercase for JSON
     if [ "$VERIFY_SSL" = "true" ]; then
         VERIFY_SSL_JSON="true"
     else
         VERIFY_SSL_JSON="false"
-    fi
-    
-    if [ "$ENABLE_HEALTH_CHECKS" = "true" ]; then
-        ENABLE_HEALTH_CHECKS_JSON="true"
-    else
-        ENABLE_HEALTH_CHECKS_JSON="false"
     fi
 
     # Create the JSON configuration using printf to avoid shell issues
@@ -245,11 +247,10 @@ main() {
         printf "    \"password\": \"%s\",\n" "$PROXMOX_PASSWORD"
         printf "    \"node\": \"%s\",\n" "$PROXMOX_NODE"
         printf "    \"template_vm_id\": %s,\n" "$TEMPLATE_VM_ID"
-        printf "    \"storage\": \"%s\",\n" "$PROXMOX_STORAGE"
         printf "    \"verify_ssl\": %s\n" "$VERIFY_SSL_JSON"
         printf "  },\n"
         printf "  \"guacamole\": {\n"
-        printf "    \"host\": \"%s\",\n" "$GUACAMOLE_HOST"
+        printf "    \"url\": \"%s\",\n" "$GUACAMOLE_URL"
         printf "    \"username\": \"%s\",\n" "$GUACAMOLE_USERNAME"
         printf "    \"password\": \"%s\",\n" "$GUACAMOLE_PASSWORD"
         printf "    \"data_source\": \"%s\"\n" "$GUACAMOLE_DATASOURCE"
@@ -259,29 +260,44 @@ main() {
         printf "    \"users_per_vm\": %s,\n" "$USERS_PER_VM"
         printf "    \"max_vms\": %s,\n" "$MAX_VMS"
         printf "    \"check_interval\": %s,\n" "$CHECK_INTERVAL"
-        printf "    \"cpu\": %s,\n" "$VM_CPU"
-        printf "    \"memory\": %s,\n" "$VM_MEMORY"
-        printf "    \"disk\": \"%s\",\n" "$VM_DISK"
         printf "    \"health_check_timeout\": %s\n" "$HEALTH_TIMEOUT"
         printf "  },\n"
         printf "  \"network\": {\n"
-        printf "    \"base_ip\": \"%s\",\n" "$BASE_IP"
         printf "    \"subnet\": \"%s\",\n" "$SUBNET"
-        printf "    \"gateway\": \"%s\",\n" "$GATEWAY"
-        printf "    \"dns\": \"%s\",\n" "$DNS_SERVER"
-        printf "    \"dhcp_range_start\": \"%s\",\n" "$DHCP_START"
-        printf "    \"dhcp_range_end\": \"%s\"\n" "$DHCP_END"
-        printf "  },\n"
-        printf "  \"monitoring\": {\n"
-        printf "    \"enable_health_checks\": %s,\n" "$ENABLE_HEALTH_CHECKS_JSON"
-        printf "    \"health_check_interval\": %s,\n" "$HEALTH_CHECK_INTERVAL"
-        printf "    \"max_vm_creation_attempts\": %s,\n" "$MAX_CREATION_ATTEMPTS"
-        printf "    \"vm_ready_timeout\": %s\n" "$VM_READY_TIMEOUT"
-        printf "  }\n"
+        printf "    \"gateway\": \"%s\"\n" "$GATEWAY"
+        printf "  }"
+        
+        # Add pfSense section only if configured
+        if [ "$CONFIGURE_PFSENSE" = "true" ]; then
+            printf ",\n"
+            printf "  \"pfsense\": {\n"
+            printf "    \"url\": \"%s\",\n" "$PFSENSE_URL"
+            printf "    \"username\": \"%s\",\n" "$PFSENSE_USERNAME"
+            printf "    \"password\": \"%s\"\n" "$PFSENSE_PASSWORD"
+            printf "  }\n"
+        else
+            printf "\n"
+        fi
+        
         printf "}\n"
     } > "$CONFIG_FILE"
 
     print_success "Configuration file created successfully: $CONFIG_FILE"
+    
+    # Show summary
+    echo ""
+    print_info "Configuration Summary:"
+    echo "  - Proxmox: $PROXMOX_HOST (Node: $PROXMOX_NODE)"
+    echo "  - Guacamole: $GUACAMOLE_URL"
+    if [ "$CONFIGURE_PFSENSE" = "true" ]; then
+        echo "  - pfSense: $PFSENSE_URL"
+    else
+        echo "  - pfSense: Not configured"
+    fi
+    echo "  - VM Pool: $BASE_LOAD base VMs, max $MAX_VMS VMs, $USERS_PER_VM users/VM"
+    echo "  - Network: $SUBNET (Gateway: $GATEWAY)"
+    
+    echo ""
     print_info "You can now run the test script to validate your configuration:"
     echo "  python3 test_vm_manager.py"
 }
