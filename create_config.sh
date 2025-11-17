@@ -139,7 +139,7 @@ check_dependencies() {
     local missing_deps=""
     
     # Check for common network tools
-    for tool in ip nmap ss; do
+    for tool in ip nmap ss curl; do
         if ! command -v "$tool" >/dev/null 2>&1; then
             missing_deps="$missing_deps $tool"
         fi
@@ -148,8 +148,179 @@ check_dependencies() {
     if [ -n "$missing_deps" ]; then
         print_warning "Missing dependencies: $missing_deps"
         print_info "Some auto-detection features may be limited"
+        return 1
     else
         print_success "All dependencies available"
+        return 0
+    fi
+}
+
+# Function to detect local network
+detect_local_network() {
+    print_info "Detecting local network configuration..."
+    
+    # Try to get default gateway and subnet
+    local gateway=$(ip route | grep default | awk '{print $3}' | head -1)
+    local interface=$(ip route | grep default | awk '{print $5}' | head -1)
+    
+    if [ -n "$interface" ]; then
+        local network=$(ip addr show "$interface" 2>/dev/null | grep inet | awk '{print $2}' | head -1)
+        if [ -n "$network" ]; then
+            SUBNET="$network"
+            print_success "Detected subnet: $SUBNET"
+        fi
+    fi
+    
+    if [ -n "$gateway" ] && validate_ip "$gateway"; then
+        GATEWAY="$gateway"
+        print_success "Detected gateway: $GATEWAY"
+    fi
+    
+    # Extract network portion for scanning
+    if [ -n "$SUBNET" ]; then
+        NETWORK_PREFIX=$(echo "$SUBNET" | cut -d'/' -f1 | cut -d'.' -f1-3)
+        print_info "Network prefix: $NETWORK_PREFIX.0/24"
+    else
+        print_warning "Could not detect network configuration"
+        NETWORK_PREFIX="192.168.1"
+    fi
+}
+
+# Function to test Guacamole connection
+test_guacamole_connection() {
+    local url="$1"
+    local username="$2"
+    local password="$3"
+    
+    print_info "Testing Guacamole connection to: $url"
+    
+    # Try to connect using curl
+    if curl -s -f --connect-timeout 5 "$url" > /dev/null 2>&1; then
+        print_success "Guacamole server is reachable"
+        return 0
+    else
+        print_warning "Cannot reach Guacamole server at $url"
+        return 1
+    fi
+}
+
+# Function to scan for Guacamole instances
+scan_for_guacamole() {
+    print_info "Scanning network for Guacamole instances..."
+    
+    local found_instances=()
+    local common_ports="8080 4822 8443 80 443"
+    
+    # Check if nmap is available
+    if ! command -v nmap >/dev/null 2>&1; then
+        print_warning "nmap not available, using simple port scanning"
+        # Simple port scanning without nmap
+        for port in $common_ports; do
+            print_info "Scanning port $port on network $NETWORK_PREFIX.0/24"
+            for i in $(seq 1 254); do
+                local target="$NETWORK_PREFIX.$i"
+                if timeout 1 bash -c "echo >/dev/tcp/$target/$port" 2>/dev/null; then
+                    print_info "Found service on $target:$port"
+                    # Test if it might be Guacamole
+                    if curl -s --connect-timeout 3 "http://$target:$port/guacamole" | grep -i "guacamole" >/dev/null 2>&1; then
+                        found_instances+=("http://$target:$port/guacamole")
+                        print_success "Found Guacamole at: http://$target:$port/guacamole"
+                    elif curl -s --connect-timeout 3 "http://$target:$port" | grep -i "guacamole" >/dev/null 2>&1; then
+                        found_instances+=("http://$target:$port")
+                        print_success "Found Guacamole at: http://$target:$port")
+                    fi
+                fi
+            done
+        done
+    else
+        # Use nmap for more comprehensive scanning
+        for port in $common_ports; do
+            print_info "Scanning for services on port $port..."
+            local results=$(nmap -p "$port" --open "$NETWORK_PREFIX.0/24" -oG - 2>/dev/null | grep "/open/" | awk '{print $2}')
+            
+            for target in $results; do
+                print_info "Testing $target:$port for Guacamole..."
+                # Test HTTP
+                if curl -s --connect-timeout 3 "http://$target:$port/guacamole" | grep -i "guacamole" >/dev/null 2>&1; then
+                    found_instances+=("http://$target:$port/guacamole")
+                    print_success "Found Guacamole at: http://$target:$port/guacamole"
+                elif curl -s --connect-timeout 3 "http://$target:$port" | grep -i "guacamole" >/dev/null 2>&1; then
+                    found_instances+=("http://$target:$port")
+                    print_success "Found Guacamole at: http://$target:$port")
+                # Test HTTPS
+                elif curl -s -k --connect-timeout 3 "https://$target:$port/guacamole" | grep -i "guacamole" >/dev/null 2>&1; then
+                    found_instances+=("https://$target:$port/guacamole")
+                    print_success "Found Guacamole at: https://$target:$port/guacamole")
+                elif curl -s -k --connect-timeout 3 "https://$target:$port" | grep -i "guacamole" >/dev/null 2>&1; then
+                    found_instances+=("https://$target:$port")
+                    print_success "Found Guacamole at: https://$target:$port")
+                fi
+            done
+        done
+    fi
+    
+    if [ ${#found_instances[@]} -eq 0 ]; then
+        print_warning "No Guacamole instances found automatically"
+        return 1
+    fi
+    
+    # Display found instances
+    echo ""
+    print_info "Found Guacamole instances:"
+    for i in "${!found_instances[@]}"; do
+        echo "  $((i+1)). ${found_instances[$i]}"
+    done
+    
+    # Let user choose
+    echo ""
+    get_input "Select Guacamole instance (1-${#found_instances[@]})" "1" SELECTED_INDEX validate_number
+    
+    if [ "$SELECTED_INDEX" -ge 1 ] && [ "$SELECTED_INDEX" -le ${#found_instances[@]} ]; then
+        GUACAMOLE_URL="${found_instances[$((SELECTED_INDEX-1))]}"
+        print_success "Selected Guacamole URL: $GUACAMOLE_URL"
+        return 0
+    else
+        print_error "Invalid selection"
+        return 1
+    fi
+}
+
+# Function to auto-configure Guacamole settings
+auto_configure_guacamole() {
+    print_info "Attempting to auto-configure Guacamole..."
+    
+    detect_local_network
+    
+    get_yes_no "Do you want to scan for Guacamole instances automatically?" "yes" SCAN_GUACAMOLE
+    
+    if [ "$SCAN_GUACAMOLE" = "true" ]; then
+        if scan_for_guacamole; then
+            # Test the connection
+            if test_guacamole_connection "$GUACAMOLE_URL" "$GUACAMOLE_USERNAME" "$GUACAMOLE_PASSWORD"; then
+                print_success "Guacamole auto-configuration successful"
+                return 0
+            else
+                print_warning "Auto-detected Guacamole URL but cannot connect"
+                get_yes_no "Do you want to use this URL anyway?" "yes" USE_ANYWAY
+                if [ "$USE_ANYWAY" = "true" ]; then
+                    return 0
+                fi
+            fi
+        fi
+    fi
+    
+    # Fall back to manual configuration
+    print_info "Manual Guacamole configuration"
+    get_input "Enter Guacamole server URL" "http://$NETWORK_PREFIX.101:8080/guacamole" GUACAMOLE_URL validate_url
+    get_input "Enter Guacamole username" "guacadmin" GUACAMOLE_USERNAME
+    get_input "Enter Guacamole password" "guacadmin" GUACAMOLE_PASSWORD
+    get_input "Enter Guacamole data source" "postgresql" GUACAMOLE_DATASOURCE
+    
+    # Test the connection
+    if test_guacamole_connection "$GUACAMOLE_URL" "$GUACAMOLE_USERNAME" "$GUACAMOLE_PASSWORD"; then
+        print_success "Guacamole connection test successful"
+    else
+        print_warning "Guacamole connection test failed, but continuing with configuration"
     fi
 }
 
@@ -161,7 +332,14 @@ main() {
     echo ""
     
     # Check dependencies
-    check_dependencies
+    if ! check_dependencies; then
+        print_warning "Some dependencies are missing. Auto-scan features may not work properly."
+        get_yes_no "Continue anyway?" "yes" CONTINUE_ANYWAY
+        if [ "$CONTINUE_ANYWAY" = "false" ]; then
+            print_error "Please install missing dependencies and run the script again."
+            exit 1
+        fi
+    fi
     
     # Backup existing config
     if [ -f "$CONFIG_FILE" ]; then
@@ -187,13 +365,10 @@ main() {
     get_input "Enter template VM ID" "1000" TEMPLATE_VM_ID validate_number
     get_yes_no "Verify SSL certificates? (recommended: no for self-signed)" "no" VERIFY_SSL
 
-    # Guacamole Configuration
+    # Guacamole Configuration with auto-detection
     print_info "Apache Guacamole Configuration"
     echo "----------------------------------"
-    get_input "Enter Guacamole server URL" "http://192.168.1.101:8080/guacamole" GUACAMOLE_URL validate_url
-    get_input "Enter Guacamole username" "guacadmin" GUACAMOLE_USERNAME
-    get_input "Enter Guacamole password" "guacadmin" GUACAMOLE_PASSWORD
-    get_input "Enter Guacamole data source" "postgresql" GUACAMOLE_DATASOURCE
+    auto_configure_guacamole
 
     # VM Pool Configuration
     print_info "VM Pool Configuration"
@@ -207,8 +382,9 @@ main() {
     # Network Configuration
     print_info "Network Configuration"
     echo "-----------------------"
-    get_input "Enter network subnet (CIDR)" "192.168.1.0/24" SUBNET
-    get_input "Enter network gateway" "192.168.1.1" GATEWAY validate_ip
+    detect_local_network
+    get_input "Enter network subnet (CIDR)" "$SUBNET" SUBNET
+    get_input "Enter network gateway" "$GATEWAY" GATEWAY validate_ip
 
     # pfSense Configuration (Optional)
     print_info "pfSense Configuration (Optional)"
@@ -216,7 +392,7 @@ main() {
     get_yes_no "Configure pfSense integration?" "no" CONFIGURE_PFSENSE
     
     if [ "$CONFIGURE_PFSENSE" = "true" ]; then
-        get_input "Enter pfSense server URL" "https://192.168.1.1" PFSENSE_URL validate_url
+        get_input "Enter pfSense server URL" "https://$NETWORK_PREFIX.1" PFSENSE_URL validate_url
         get_input "Enter pfSense username" "admin" PFSENSE_USERNAME
         get_input "Enter pfSense password" "" PFSENSE_PASSWORD
     else
