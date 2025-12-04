@@ -1,4 +1,13 @@
 # CODDash
+As of Dec 4 I am taking steps to find a successor for the project.
+
+## Known Issues:
+Venv Script doesn't enter Venv
+Guacmole(Most likely config issues on user end)
+CI is rudimentary.
+Logging is poor.
+Setup is still very manual and does not clearly describe what each default means.
+
 # Quickstart
 
 ## On Host Machine
